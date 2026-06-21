@@ -225,7 +225,10 @@
                                 <div>
                                     <div style="font-size: 12px; color: #a3a3a3; margin-bottom: 5px;">TOTAL</div>
                                     <div style="font-weight: bold;">$${parseFloat(order.total).toFixed(2)}</div>
-                                    ${order.shippingCost !== undefined ? `<div style="font-size: 11px; color: #8f8f8f; margin-top: 3px;">(incl. $${parseFloat(order.shippingCost).toFixed(2)} shipping)</div>` : ''}
+                                    <div style="font-size: 11px; color: #8f8f8f; margin-top: 3px; line-height: 1.4;">
+                                        ${order.shippingCost !== undefined ? `Shipping: $${parseFloat(order.shippingCost).toFixed(2)}` : ''}
+                                        ${order.taxAmount !== undefined && order.taxAmount > 0 ? `<br>Tax: $${parseFloat(order.taxAmount).toFixed(2)}` : ''}
+                                    </div>
                                 </div>
                                 <div>
                                     <div style="font-size: 12px; color: #a3a3a3; margin-bottom: 5px;">CUSTOMER</div>

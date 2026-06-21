@@ -454,6 +454,11 @@
                 }
             }
             
+            // Store globally for the checkout modal calculation
+            window.cartSubtotal = subtotal;
+            window.cartShippingCost = shippingCost;
+            window.cartTotalQty = totalQty;
+            
             const total = subtotal + shippingCost;
             
             itemsHTML += `
@@ -533,7 +538,6 @@
         window.openCheckout = function () {
             document.getElementById('shipping-modal').style.display = 'flex';
         }
-
         window.renderCart();
 
         // ----------------------------------------------------
@@ -570,11 +574,13 @@
                         shippingCost = maxCost;
                     }
                 }
-                const total = subtotal + shippingCost;
 
                 // Recover shipping info saved before Stripe redirect
                 let shippingInfo = {};
                 try { shippingInfo = JSON.parse(localStorage.getItem('pendingShipping')) || {}; } catch (e) {}
+
+                const taxAmount = parseFloat(shippingInfo.taxAmount || 0);
+                const total = subtotal + shippingCost + taxAmount;
 
                 // Save order to Firestore so it appears in My Orders
                 try {
@@ -586,6 +592,7 @@
                         items: purchasedItems,
                         subtotal: subtotal,
                         shippingCost: shippingCost,
+                        taxAmount: taxAmount,
                         total: total,
                         date: new Date().toISOString(),
                         status: 'Paid',
@@ -626,6 +633,87 @@
             alert("Payment was canceled. You can try again when you are ready.");
         }
 
+        const TAX_RATES = {
+            AL: { rate: 0.0400, taxShipping: true },
+            AK: { rate: 0.0000, taxShipping: false },
+            AZ: { rate: 0.0560, taxShipping: false },
+            AR: { rate: 0.0650, taxShipping: true },
+            CA: { rate: 0.0725, taxShipping: false },
+            CO: { rate: 0.0290, taxShipping: false },
+            CT: { rate: 0.0635, taxShipping: true },
+            DE: { rate: 0.0000, taxShipping: false },
+            DC: { rate: 0.0600, taxShipping: true },
+            FL: { rate: 0.0600, taxShipping: true },
+            GA: { rate: 0.0400, taxShipping: true },
+            HI: { rate: 0.0400, taxShipping: true },
+            ID: { rate: 0.0600, taxShipping: true },
+            IL: { rate: 0.0625, taxShipping: true }, // Warehouse state Rockford, Illinois
+            IN: { rate: 0.0700, taxShipping: true },
+            IA: { rate: 0.0600, taxShipping: false },
+            KS: { rate: 0.0650, taxShipping: true },
+            KY: { rate: 0.0600, taxShipping: true },
+            LA: { rate: 0.0500, taxShipping: false },
+            ME: { rate: 0.0550, taxShipping: false },
+            MD: { rate: 0.0600, taxShipping: false },
+            MA: { rate: 0.0625, taxShipping: false },
+            MI: { rate: 0.0600, taxShipping: true },
+            MN: { rate: 0.0688, taxShipping: true },
+            MS: { rate: 0.0700, taxShipping: true },
+            MO: { rate: 0.0423, taxShipping: false },
+            MT: { rate: 0.0000, taxShipping: false },
+            NE: { rate: 0.0550, taxShipping: true },
+            NV: { rate: 0.0685, taxShipping: false },
+            NH: { rate: 0.0000, taxShipping: false },
+            NJ: { rate: 0.06625, taxShipping: true },
+            NM: { rate: 0.04875, taxShipping: true },
+            NY: { rate: 0.0400, taxShipping: true },
+            NC: { rate: 0.0475, taxShipping: true },
+            ND: { rate: 0.0500, taxShipping: true },
+            OH: { rate: 0.0575, taxShipping: true },
+            OK: { rate: 0.0450, taxShipping: false },
+            OR: { rate: 0.0000, taxShipping: false },
+            PA: { rate: 0.0600, taxShipping: true },
+            RI: { rate: 0.0700, taxShipping: true },
+            SC: { rate: 0.0600, taxShipping: true },
+            SD: { rate: 0.0420, taxShipping: true },
+            TN: { rate: 0.0700, taxShipping: true },
+            TX: { rate: 0.0625, taxShipping: true },
+            UT: { rate: 0.0610, taxShipping: true },
+            VT: { rate: 0.0600, taxShipping: true },
+            VA: { rate: 0.0530, taxShipping: false },
+            WA: { rate: 0.0650, taxShipping: true },
+            WV: { rate: 0.0600, taxShipping: true },
+            WI: { rate: 0.0500, taxShipping: true },
+            WY: { rate: 0.0400, taxShipping: true }
+        };
+
+        window.updateTaxCalculation = function () {
+            const stateSelect = document.getElementById('shipping-state');
+            const state = stateSelect ? stateSelect.value : '';
+            const breakdownEl = document.getElementById('checkout-breakdown');
+
+            if (!state || window.cartSubtotal === undefined) {
+                if (breakdownEl) breakdownEl.style.display = 'none';
+                return;
+            }
+
+            const taxRateInfo = TAX_RATES[state] || { rate: 0.0, taxShipping: false };
+            const subtotal = window.cartSubtotal || 0;
+            const shipping = window.cartShippingCost || 0;
+
+            const taxableAmount = subtotal + (taxRateInfo.taxShipping ? shipping : 0);
+            const taxAmount = taxableAmount * taxRateInfo.rate;
+            const grandTotal = subtotal + shipping + taxAmount;
+
+            document.getElementById('checkout-subtotal').textContent = `$${subtotal.toFixed(2)}`;
+            document.getElementById('checkout-shipping').textContent = shipping === 0 ? 'FREE' : `$${shipping.toFixed(2)}`;
+            document.getElementById('checkout-tax-label').innerHTML = `Sales Tax (${(taxRateInfo.rate * 100).toFixed(2)}% ${state}):`;
+            document.getElementById('checkout-tax').textContent = `$${taxAmount.toFixed(2)}`;
+            document.getElementById('checkout-total').textContent = `$${grandTotal.toFixed(2)}`;
+
+            if (breakdownEl) breakdownEl.style.display = 'flex';
+        };
+
         window.openCheckout = function () {
             // Require login before checkout
             if (!auth.currentUser) {
@@ -636,21 +724,67 @@
             // Pre-fill email from Firebase Auth
             const emailField = document.getElementById('shipping-email');
             if (emailField && auth.currentUser.email) emailField.value = auth.currentUser.email;
+
+            // Reset modal values
+            const nameField = document.getElementById('shipping-name');
+            const streetField = document.getElementById('shipping-street');
+            const line2Field = document.getElementById('shipping-line2');
+            const cityField = document.getElementById('shipping-city');
+            const stateField = document.getElementById('shipping-state');
+            const zipField = document.getElementById('shipping-zip');
+
+            if (nameField) nameField.value = '';
+            if (streetField) streetField.value = '';
+            if (line2Field) line2Field.value = '';
+            if (cityField) cityField.value = '';
+            if (stateField) stateField.value = '';
+            if (zipField) zipField.value = '';
+
+            const breakdownEl = document.getElementById('checkout-breakdown');
+            if (breakdownEl) breakdownEl.style.display = 'none';
+
             document.getElementById('shipping-modal').style.display = 'flex';
-        }
+        };
 
         window.proceedToStripe = async function () {
             const name    = document.getElementById('shipping-name').value.trim();
             const email   = document.getElementById('shipping-email').value.trim();
-            const address = document.getElementById('shipping-address').value.trim();
+            const street  = document.getElementById('shipping-street').value.trim();
+            const line2   = document.getElementById('shipping-line2').value.trim();
+            const city    = document.getElementById('shipping-city').value.trim();
+            const state   = document.getElementById('shipping-state').value;
+            const zip     = document.getElementById('shipping-zip').value.trim();
 
-            if (!name || !email || !address) {
+            if (!name || !email || !street || !city || !state || !zip) {
                 alert('Please fill in all shipping fields.');
                 return;
             }
 
+            // Construct formatted address string
+            const addressParts = [street];
+            if (line2) addressParts.push(line2);
+            addressParts.push(city, state, zip);
+            const address = addressParts.join(', ');
+
+            // Recalculate tax
+            const taxRateInfo = TAX_RATES[state] || { rate: 0.0, taxShipping: false };
+            const subtotal = window.cartSubtotal || 0;
+            const shipping = window.cartShippingCost || 0;
+            const taxableAmount = subtotal + (taxRateInfo.taxShipping ? shipping : 0);
+            const taxAmount = taxableAmount * taxRateInfo.rate;
+
             // Save shipping info to localStorage before leaving the page
-            localStorage.setItem('pendingShipping', JSON.stringify({ name, email, address }));
+            localStorage.setItem('pendingShipping', JSON.stringify({ 
+                name, 
+                email, 
+                address,
+                street,
+                line2,
+                city,
+                state,
+                zip,
+                taxAmount 
+            }));
 
             document.getElementById('shipping-modal').style.display = 'none';
 
@@ -710,7 +844,10 @@
                 const response = await fetch('/api/create-checkout-session', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ items: enabledItems })
+                    body: JSON.stringify({ 
+                        items: enabledItems,
+                        shippingState: state
+                    })
                 });
                 const session = await response.json();
                 if (session.url) {
@@ -729,7 +866,7 @@
 
     <!-- Shipping Info Modal -->
     <div id="shipping-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:5000; justify-content:center; align-items:center; backdrop-filter:blur(8px);">
-        <div style="background:#0d0d0d; border:1px solid rgba(255,255,255,0.08); border-radius:18px; padding:40px; width:100%; max-width:460px; position:relative;">
+        <div style="background:#0d0d0d; border:1px solid rgba(255,255,255,0.08); border-radius:18px; padding:40px; width:100%; max-width:480px; position:relative;">
             <button onclick="document.getElementById('shipping-modal').style.display='none'" style="position:absolute;top:15px;right:20px;background:none;border:none;color:white;font-size:24px;cursor:pointer;">×</button>
             <h2 style="margin-bottom:8px; font-size:22px;">Shipping Information</h2>
             <p style="color:#8f8f8f; font-size:13px; margin-bottom:25px;">Enter your details before proceeding to payment.</p>
@@ -744,11 +881,104 @@
                 <input id="shipping-email" type="email" placeholder="you@email.com"
                     style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #333;color:white;border-radius:10px;font-size:14px;box-sizing:border-box;">
             </div>
-            <div style="margin-bottom:28px;">
-                <label style="display:block;margin-bottom:6px;color:#8f8f8f;font-size:13px;">Shipping Address</label>
-                <textarea id="shipping-address" rows="3" placeholder="123 Main St, City, State, ZIP"
-                    style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #333;color:white;border-radius:10px;font-size:14px;resize:none;box-sizing:border-box;"></textarea>
+            <div style="margin-bottom:15px;">
+                <label style="display:block;margin-bottom:6px;color:#8f8f8f;font-size:13px;">Street Address</label>
+                <input id="shipping-street" type="text" placeholder="123 Main St" required
+                    style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #333;color:white;border-radius:10px;font-size:14px;box-sizing:border-box;margin-bottom:8px;">
+                <input id="shipping-line2" type="text" placeholder="Apt, Suite, Unit, etc. (Optional)"
+                    style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #333;color:white;border-radius:10px;font-size:14px;box-sizing:border-box;">
             </div>
+            <div style="display:grid; grid-template-columns: 2fr 1fr 1.2fr; gap: 10px; margin-bottom: 20px;">
+                <div>
+                    <label style="display:block;margin-bottom:6px;color:#8f8f8f;font-size:13px;">City</label>
+                    <input id="shipping-city" type="text" placeholder="Rockford" required
+                        style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #333;color:white;border-radius:10px;font-size:14px;box-sizing:border-box;">
+                </div>
+                <div>
+                    <label style="display:block;margin-bottom:6px;color:#8f8f8f;font-size:13px;">State</label>
+                    <select id="shipping-state" required onchange="window.updateTaxCalculation()"
+                        style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #333;color:white;border-radius:10px;font-size:14px;box-sizing:border-box;appearance:none;cursor:pointer;">
+                        <option value="" disabled selected>State</option>
+                        <option value="AL">AL</option>
+                        <option value="AK">AK</option>
+                        <option value="AZ">AZ</option>
+                        <option value="AR">AR</option>
+                        <option value="CA">CA</option>
+                        <option value="CO">CO</option>
+                        <option value="CT">CT</option>
+                        <option value="DE">DE</option>
+                        <option value="DC">DC</option>
+                        <option value="FL">FL</option>
+                        <option value="GA">GA</option>
+                        <option value="HI">HI</option>
+                        <option value="ID">ID</option>
+                        <option value="IL">IL</option>
+                        <option value="IN">IN</option>
+                        <option value="IA">IA</option>
+                        <option value="KS">KS</option>
+                        <option value="KY">KY</option>
+                        <option value="LA">LA</option>
+                        <option value="ME">ME</option>
+                        <option value="MD">MD</option>
+                        <option value="MA">MA</option>
+                        <option value="MI">MI</option>
+                        <option value="MN">MN</option>
+                        <option value="MS">MS</option>
+                        <option value="MO">MO</option>
+                        <option value="MT">MT</option>
+                        <option value="NE">NE</option>
+                        <option value="NV">NV</option>
+                        <option value="NH">NH</option>
+                        <option value="NJ">NJ</option>
+                        <option value="NM">NM</option>
+                        <option value="NY">NY</option>
+                        <option value="NC">NC</option>
+                        <option value="ND">ND</option>
+                        <option value="OH">OH</option>
+                        <option value="OK">OK</option>
+                        <option value="OR">OR</option>
+                        <option value="PA">PA</option>
+                        <option value="RI">RI</option>
+                        <option value="SC">SC</option>
+                        <option value="SD">SD</option>
+                        <option value="TN">TN</option>
+                        <option value="TX">TX</option>
+                        <option value="UT">UT</option>
+                        <option value="VT">VT</option>
+                        <option value="VA">VA</option>
+                        <option value="WA">WA</option>
+                        <option value="WV">WV</option>
+                        <option value="WI">WI</option>
+                        <option value="WY">WY</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block;margin-bottom:6px;color:#8f8f8f;font-size:13px;">ZIP Code</label>
+                    <input id="shipping-zip" type="text" placeholder="61107" required
+                        style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #333;color:white;border-radius:10px;font-size:14px;box-sizing:border-box;">
+                </div>
+            </div>
+
+            <!-- Live Order Summary & Tax Breakdown -->
+            <div id="checkout-breakdown" style="margin-bottom:20px; padding:15px; background:#161616; border:1px solid rgba(255,255,255,0.04); border-radius:12px; font-size:14px; display:none; flex-direction:column; gap:8px;">
+                <div style="display:flex; justify-content:space-between; color:#a3a3a3;">
+                    <span>Subtotal:</span>
+                    <span id="checkout-subtotal" style="color:white; font-weight:600;">$0.00</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; color:#a3a3a3;">
+                    <span>Shipping:</span>
+                    <span id="checkout-shipping" style="color:white; font-weight:600;">$0.00</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; color:#a3a3a3;">
+                    <span id="checkout-tax-label">Sales Tax (0%):</span>
+                    <span id="checkout-tax" style="color:white; font-weight:600;">$0.00</span>
+                </div>
+                <div style="border-top:1px solid #333; margin-top:5px; padding-top:10px; display:flex; justify-content:space-between; font-weight:bold; font-size:16px;">
+                    <span>Total:</span>
+                    <span id="checkout-total" style="color:white;">$0.00</span>
+                </div>
+            </div>
+
             <button id="stripe-btn" onclick="window.proceedToStripe()"
                 style="width:100%;padding:14px;background:white;color:black;font-weight:bold;font-size:15px;border:none;border-radius:30px;cursor:pointer;transition:.3s;">
                 Proceed to Payment
