@@ -49,6 +49,22 @@ if (registerForm) {
                 role: "user" // Aquí defines que todos los nuevos son "user"
             });
 
+            // Enviar correo de bienvenida por medio de la API en Vercel
+            try {
+                await fetch('/api/send-welcome-email', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: user.email,
+                        username: username
+                    })
+                });
+            } catch (emailErr) {
+                console.error("Error al enviar el correo de bienvenida:", emailErr);
+            }
+
             window.location.href = 'index.html';
         } catch (error) {
             errorMsg.style.display = 'block';

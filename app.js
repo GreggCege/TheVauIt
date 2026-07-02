@@ -181,6 +181,7 @@ function updateHeader(username) {
     if (!authSection) return;
 
     const isAdmin = currentUserRole === 'admin';
+    const isLogged = !!currentUser;
     const isVaultOpen = new Date().getTime() >= TARGET_DATE;
 
     if (username) {
@@ -205,32 +206,31 @@ function updateHeader(username) {
         el.style.display = isAdmin ? 'block' : 'none';
     });
 
-    // Barra de búsqueda y secciones visibles según el rol y si la bóveda está abierta
+    // Barra de búsqueda y secciones visibles según el estado de registro
     const searchInput = document.getElementById('search-input');
     if (searchInput && searchInput.parentElement && searchInput.parentElement.parentElement) {
-        searchInput.parentElement.parentElement.style.visibility = (isAdmin || isVaultOpen) ? 'visible' : 'hidden';
+        searchInput.parentElement.parentElement.style.visibility = isLogged ? 'visible' : 'hidden';
     }
 
     const catalogSection = document.getElementById('catalog');
     if (catalogSection) {
-        catalogSection.style.display = (isAdmin || isVaultOpen) ? 'block' : 'none';
+        catalogSection.style.display = isLogged ? 'block' : 'none';
     }
 
     const cartSection = document.querySelector('.cart-section');
     if (cartSection) {
-        cartSection.style.display = (isAdmin || isVaultOpen) ? 'block' : 'none';
+        cartSection.style.display = isLogged ? 'block' : 'none';
     }
 
-    // Habilitar menú desplegable (logo clickable) para todos si la bóveda está abierta
+    // Habilitar menú desplegable (logo clickable) solo para usuarios registrados
     const logo = document.querySelector('.logo');
     if (logo) {
-        const canClickLogo = isAdmin || isVaultOpen;
+        const canClickLogo = isLogged;
         logo.style.pointerEvents = canClickLogo ? 'auto' : 'none';
         logo.style.cursor = canClickLogo ? 'pointer' : 'default';
     }
 
     // Hero section logic
-    const isLogged = !!username;
     const heroBtn = document.getElementById('hero-action-btn');
     const heroCountdown = document.getElementById('hero-countdown');
 
@@ -249,6 +249,10 @@ function updateHeader(username) {
             }
         } else {
             heroBtn.style.display = 'inline-block';
+            heroBtn.textContent = 'Register to view all content';
+            heroBtn.onclick = () => {
+                window.location.href = 'register.html';
+            };
             heroCountdown.style.display = 'none';
             if (window.countdownInterval) {
                 clearInterval(window.countdownInterval);
@@ -267,7 +271,15 @@ function updateSidebarVisibility() {
     if (!sidebar) return;
 
     const isAdmin = currentUserRole === 'admin';
+    const isLogged = !!currentUser;
     const categories = sidebar.querySelectorAll('.menu-category');
+
+    if (isLogged) {
+        sidebar.style.display = 'block';
+    } else {
+        sidebar.style.display = 'none';
+        sidebar.classList.remove('active');
+    }
 
     categories.forEach(cat => {
         // Secciones exclusivas de administración
@@ -276,28 +288,13 @@ function updateSidebarVisibility() {
             return;
         }
 
-        // Enlaces generales que el rol user sí puede ver
-        const hasVaultLink = cat.querySelector('a[href="index.html"]');
-        const hasFavoritesLink = cat.querySelector('a[href="Favorites.html"]');
-        const hasOrdersLink = cat.querySelector('a[href="Orders.html"]');
-        const hasCartLink = cat.querySelector('a[href="Cart.html"]');
-
-        const isAllowedUserLink = hasVaultLink || hasFavoritesLink || hasOrdersLink || hasCartLink;
-
-        if (isAdmin) {
-            cat.style.display = 'block';
-        } else {
-            if (isAllowedUserLink) {
-                cat.style.display = 'block';
-            } else {
-                // Ocultar categorías de productos (Designers, Men, Women, etc.)
-                cat.style.display = 'none';
-            }
-        }
+        // Si está logueado, ve todo lo demás (barra lateral completa)
+        cat.style.display = isLogged ? 'block' : 'none';
     });
 }
 
 function checkPageAccess() {
+    const isLogged = !!currentUser;
     const isAdmin = currentUserRole === 'admin';
     if (isAdmin) return; // Admin libre acceso
 
@@ -317,23 +314,18 @@ function checkPageAccess() {
         return;
     }
 
-    const isVaultOpen = new Date().getTime() >= TARGET_DATE;
-    if (isVaultOpen) return; // Si la bóveda está abierta, se permite el acceso a las páginas de productos
-
-    // Si la bóveda está cerrada y no es admin, solo permitimos las páginas base
-    const allowedPages = [
-        'index.html',
-        '',
-        'login.html',
-        'register.html',
-        'cart.html',
-        'orders.html',
-        'favorites.html'
-    ];
-
-    if (!allowedPages.includes(page)) {
-        console.warn("Acceso denegado a página restringida (bóveda cerrada):", page);
-        window.location.href = 'index.html';
+    // Si no está registrado, las únicas páginas permitidas son index.html, login.html y register.html
+    if (!isLogged) {
+        const allowedGuestPages = [
+            'index.html',
+            '',
+            'login.html',
+            'register.html'
+        ];
+        if (!allowedGuestPages.includes(page)) {
+            console.warn("Acceso denegado a página restringida para usuarios no registrados:", page);
+            window.location.href = 'index.html';
+        }
     }
 }
 
@@ -385,6 +377,11 @@ function loadProducts() {
     if (unsubscribeProducts) {
         unsubscribeProducts();
         unsubscribeProducts = null;
+    }
+
+    if (!currentUser) {
+        catalogGrid.innerHTML = '';
+        return;
     }
 
     const productsRef = collection(db, "products");
