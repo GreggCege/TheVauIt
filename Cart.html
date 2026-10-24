@@ -376,17 +376,6 @@
         window.renderCart = function () {
             const container = document.getElementById('cart-container');
 
-            // If user is not logged in, show login required message
-            if (!auth.currentUser) {
-                container.innerHTML = `
-                    <div class="cart-empty">
-                        <i class="fas fa-lock"></i>
-                        <p>You must be logged in to view your cart.</p>
-                        <a href="login.html">Log In</a>
-                    </div>`;
-                return;
-            }
-
             let cart = [];
             try { cart = JSON.parse(localStorage.getItem('cart')) || []; } catch (e) { }
 
@@ -536,17 +525,98 @@
             if (window.updateCartBadge) window.updateCartBadge();
         }
 
+        window.closeCheckout = function () {
+            const modal = document.getElementById('shipping-modal');
+            if (modal) modal.style.display = 'none';
+
+            // Restaurar el carrito original si estábamos en modo Buy Now
+            const backup = localStorage.getItem('_cartBackup');
+            if (backup !== null) {
+                localStorage.setItem('cart', backup);
+                localStorage.removeItem('_cartBackup');
+                window.renderCart();
+                if (window.updateCartBadge) window.updateCartBadge();
+            }
+            const banner = document.getElementById('buynow-banner');
+            if (banner) banner.remove();
+        };
+
         window.openCheckout = function () {
-            document.getElementById('shipping-modal').style.display = 'flex';
-        }
+            // Pre-fill email from Firebase Auth if logged in
+            const emailField = document.getElementById('shipping-email');
+            if (emailField && auth.currentUser && auth.currentUser.email) {
+                emailField.value = auth.currentUser.email;
+            }
+
+            const nameField = document.getElementById('shipping-name');
+            const streetField = document.getElementById('shipping-street');
+            const line2Field = document.getElementById('shipping-line2');
+            const cityField = document.getElementById('shipping-city');
+            const stateField = document.getElementById('shipping-state');
+            const zipField = document.getElementById('shipping-zip');
+
+            if (nameField && !nameField.value) nameField.value = '';
+            if (streetField && !streetField.value) streetField.value = '';
+            if (line2Field && !line2Field.value) line2Field.value = '';
+            if (cityField && !cityField.value) cityField.value = '';
+            if (stateField && !stateField.value) stateField.value = '';
+            if (zipField && !zipField.value) zipField.value = '';
+
+            const breakdownEl = document.getElementById('checkout-breakdown');
+            if (breakdownEl) breakdownEl.style.display = 'none';
+
+            const modal = document.getElementById('shipping-modal');
+            if (modal) modal.style.display = 'flex';
+        };
+
         window.renderCart();
+
+        // ── Buy Now: carga directa al checkout con un solo producto ───────────
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('buynow') === '1') {
+            const buyNowRaw = sessionStorage.getItem('buyNowItem');
+            if (buyNowRaw) {
+                try {
+                    const buyNowItem = JSON.parse(buyNowRaw);
+                    sessionStorage.removeItem('buyNowItem');
+
+                    // Guardar el carrito original como respaldo antes de sobrescribirlo
+                    if (localStorage.getItem('_cartBackup') === null) {
+                        const originalCart = localStorage.getItem('cart') || '[]';
+                        localStorage.setItem('_cartBackup', originalCart);
+                    }
+                    localStorage.setItem('cart', JSON.stringify([buyNowItem]));
+                    window.renderCart();
+                    if (window.updateCartBadge) window.updateCartBadge();
+
+                    // Mostrar banner informativo
+                    const banner = document.createElement('div');
+                    banner.id = 'buynow-banner';
+                    banner.style.cssText = 'position:fixed;top:80px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#4f46e5);color:white;padding:12px 28px;border-radius:30px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 4px 20px rgba(124,58,237,0.5);display:flex;align-items:center;gap:10px;';
+                    banner.innerHTML = '<span>⚡ Buy Now — Ingresa tus datos de envío para pagar</span>';
+                    document.body.appendChild(banner);
+
+                    // Abrir modal de checkout directamente
+                    setTimeout(() => {
+                        window.openCheckout();
+                        setTimeout(() => { if (banner.parentNode) banner.remove(); }, 3500);
+                    }, 150);
+
+                } catch (e) {
+                    console.error('Buy Now parse error:', e);
+                }
+            } else if (localStorage.getItem('_cartBackup') !== null) {
+                setTimeout(() => {
+                    window.openCheckout();
+                }, 150);
+            }
+        }
 
         // ----------------------------------------------------
         // STRIPE IMPLEMENTATION (VERCEL SERVERLESS)
         // ----------------------------------------------------
 
         // Check if returning from a successful or canceled payment
-        const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('success') === 'true') {
             // Wait for Firebase auth to be ready before saving the order
             const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -716,15 +786,9 @@
         };
 
         window.openCheckout = function () {
-            // Require login before checkout
-            if (!auth.currentUser) {
-                alert('⚠️ You must be logged in to checkout.\nYou will be redirected to the login page.');
-                window.location.href = 'login.html';
-                return;
-            }
-            // Pre-fill email from Firebase Auth
+            // Pre-fill email from Firebase Auth if logged in
             const emailField = document.getElementById('shipping-email');
-            if (emailField && auth.currentUser.email) emailField.value = auth.currentUser.email;
+            if (emailField && auth.currentUser && auth.currentUser.email) emailField.value = auth.currentUser.email;
 
             // Reset modal values
             const nameField = document.getElementById('shipping-name');
@@ -866,9 +930,9 @@
     </script>
 
     <!-- Shipping Info Modal -->
-    <div id="shipping-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:5000; justify-content:center; align-items:center; backdrop-filter:blur(8px);">
+    <div id="shipping-modal" onclick="if(event.target === this) window.closeCheckout()" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:5000; justify-content:center; align-items:center; backdrop-filter:blur(8px);">
         <div style="background:#0d0d0d; border:1px solid rgba(255,255,255,0.08); border-radius:18px; padding:40px; width:100%; max-width:480px; position:relative;">
-            <button onclick="document.getElementById('shipping-modal').style.display='none'" style="position:absolute;top:15px;right:20px;background:none;border:none;color:white;font-size:24px;cursor:pointer;">×</button>
+            <button onclick="window.closeCheckout()" style="position:absolute;top:15px;right:20px;background:none;border:none;color:white;font-size:24px;cursor:pointer;">×</button>
             <h2 style="margin-bottom:8px; font-size:22px;">Shipping Information</h2>
             <p style="color:#8f8f8f; font-size:13px; margin-bottom:25px;">Enter your details before proceeding to payment.</p>
 

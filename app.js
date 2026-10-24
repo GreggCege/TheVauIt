@@ -112,11 +112,14 @@ onAuthStateChanged(auth, (user) => {
                     currentUserRole = data.role || 'user';
                     if (data.username) username = data.username;
 
-                    // Sync cart and favorites from cloud to local storage
-                    if (data.cart) {
-                        localStorage.setItem('cart', JSON.stringify(data.cart));
-                    } else {
-                        localStorage.removeItem('cart');
+                    // Sync cart and favorites from cloud to local storage (solo si NO estamos en compra directa Buy Now)
+                    const isBuyNowMode = new URLSearchParams(window.location.search).get('buynow') === '1' || localStorage.getItem('_cartBackup') !== null;
+                    if (!isBuyNowMode) {
+                        if (data.cart) {
+                            localStorage.setItem('cart', JSON.stringify(data.cart));
+                        } else {
+                            localStorage.removeItem('cart');
+                        }
                     }
                     if (data.favorites) {
                         localStorage.setItem('favorites', JSON.stringify(data.favorites));
@@ -129,7 +132,10 @@ onAuthStateChanged(auth, (user) => {
                 } else {
                     console.warn("❌ No se encontró ningún documento con ese UID en /users");
                     currentUserRole = 'user';
-                    localStorage.removeItem('cart');
+                    const isBuyNowMode = new URLSearchParams(window.location.search).get('buynow') === '1' || localStorage.getItem('_cartBackup') !== null;
+                    if (!isBuyNowMode) {
+                        localStorage.removeItem('cart');
+                    }
                     localStorage.removeItem('favorites');
                     if (window.updateCartBadge) window.updateCartBadge();
                     if (window.renderCart) window.renderCart();
@@ -150,8 +156,11 @@ onAuthStateChanged(auth, (user) => {
     } else {
         currentUser = null;
         currentUserRole = 'user';
-        localStorage.removeItem('cart');
-        localStorage.removeItem('favorites');
+        // Si no está en ninguna sesión registrada (y no está en Buy Now), vaciar el carrito
+        const isBuyNowMode = new URLSearchParams(window.location.search).get('buynow') === '1' || localStorage.getItem('_cartBackup') !== null;
+        if (!isBuyNowMode) {
+            localStorage.removeItem('cart');
+        }
         if (window.updateCartBadge) window.updateCartBadge();
         if (window.renderCart) window.renderCart();
         updateHeader(null);
@@ -162,6 +171,8 @@ onAuthStateChanged(auth, (user) => {
 // ─── Sincronización en la Nube ────────────────────────────────────────────────
 window.syncCartToCloud = async () => {
     if (!currentUser) return;
+    // No sincronizar el carrito a la nube si estamos en compra directa temporal Buy Now
+    if (localStorage.getItem('_cartBackup') !== null || new URLSearchParams(window.location.search).get('buynow') === '1') return;
     const cart = JSON.parse(localStorage.getItem('cart')) || [];
     try {
         await updateDoc(doc(db, "users", currentUser.uid), { cart: cart });
@@ -206,28 +217,27 @@ function updateHeader(username) {
         el.style.display = isAdmin ? 'block' : 'none';
     });
 
-    // Barra de búsqueda y secciones visibles según el estado de registro
+    // Barra de búsqueda y secciones siempre visibles (no requieren login)
     const searchInput = document.getElementById('search-input');
     if (searchInput && searchInput.parentElement && searchInput.parentElement.parentElement) {
-        searchInput.parentElement.parentElement.style.visibility = isLogged ? 'visible' : 'hidden';
+        searchInput.parentElement.parentElement.style.visibility = 'visible';
     }
 
     const catalogSection = document.getElementById('catalog');
     if (catalogSection) {
-        catalogSection.style.display = isLogged ? 'block' : 'none';
+        catalogSection.style.display = 'block';
     }
 
     const cartSection = document.querySelector('.cart-section');
     if (cartSection) {
-        cartSection.style.display = isLogged ? 'block' : 'none';
+        cartSection.style.display = 'block';
     }
 
-    // Habilitar menú desplegable (logo clickable) solo para usuarios registrados
+    // Logo siempre clickable para abrir el sidebar
     const logo = document.querySelector('.logo');
     if (logo) {
-        const canClickLogo = isLogged;
-        logo.style.pointerEvents = canClickLogo ? 'auto' : 'none';
-        logo.style.cursor = canClickLogo ? 'pointer' : 'default';
+        logo.style.pointerEvents = 'auto';
+        logo.style.cursor = 'pointer';
     }
 
     // Hero section logic
@@ -271,15 +281,10 @@ function updateSidebarVisibility() {
     if (!sidebar) return;
 
     const isAdmin = currentUserRole === 'admin';
-    const isLogged = !!currentUser;
     const categories = sidebar.querySelectorAll('.menu-category');
 
-    if (isLogged) {
-        sidebar.style.display = 'block';
-    } else {
-        sidebar.style.display = 'none';
-        sidebar.classList.remove('active');
-    }
+    // Sidebar siempre disponible para todos
+    sidebar.style.display = 'block';
 
     categories.forEach(cat => {
         // Secciones exclusivas de administración
@@ -288,20 +293,19 @@ function updateSidebarVisibility() {
             return;
         }
 
-        // Si está logueado, ve todo lo demás (barra lateral completa)
-        cat.style.display = isLogged ? 'block' : 'none';
+        // Todo el resto del sidebar es público
+        cat.style.display = 'block';
     });
 }
 
 function checkPageAccess() {
-    const isLogged = !!currentUser;
     const isAdmin = currentUserRole === 'admin';
     if (isAdmin) return; // Admin libre acceso
 
     const path = window.location.pathname;
     const page = path.split('/').pop().toLowerCase();
 
-    // Páginas de administración que los no-administradores NUNCA pueden ver
+    // Solo las páginas de administración requieren ser admin
     const adminPages = [
         'inventory.html',
         'users.html',
@@ -313,20 +317,7 @@ function checkPageAccess() {
         window.location.href = 'index.html';
         return;
     }
-
-    // Si no está registrado, las únicas páginas permitidas son index.html, login.html y register.html
-    if (!isLogged) {
-        const allowedGuestPages = [
-            'index.html',
-            '',
-            'login.html',
-            'register.html'
-        ];
-        if (!allowedGuestPages.includes(page)) {
-            console.warn("Acceso denegado a página restringida para usuarios no registrados:", page);
-            window.location.href = 'index.html';
-        }
-    }
+    // Todas las demás páginas son públicas (no se requiere login)
 }
 
 function startCountdown() {
@@ -379,10 +370,7 @@ function loadProducts() {
         unsubscribeProducts = null;
     }
 
-    if (!currentUser) {
-        catalogGrid.innerHTML = '';
-        return;
-    }
+    // Los productos se cargan para todos (sin requerir login)
 
     const productsRef = collection(db, "products");
     const categoryFilter = catalogGrid.dataset.category || null;
@@ -452,9 +440,12 @@ function renderProduct(product, container = catalogGrid) {
             <div class="product-category">${product.category}</div>
             <div class="product-title">${product.title}</div>
             <div class="product-description">${product.description}</div>
-            <div class="product-footer">
+            <div class="product-footer" style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
                 <div class="product-price">$${product.price}</div>
-                <button class="product-btn fav-btn" data-id="${product.id}" style="${isFav ? 'background: #ff4d4d; color: white; border-color: #ff4d4d;' : ''}">${isFav ? 'Remove Favorite' : 'Favorite'}</button>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button class="product-btn fav-btn" data-id="${product.id}" style="${isFav ? 'background: #ff4d4d; color: white; border-color: #ff4d4d;' : ''}">${isFav ? 'Remove Favorite' : 'Favorite'}</button>
+                    <button class="product-btn card-buynow-btn" data-id="${product.id}" style="padding:10px 16px; font-weight:700; border-radius:30px; border:none; cursor:pointer; background:linear-gradient(135deg, #6a676eff, #474750ff); color:white; box-shadow:0 2px 10px rgba(124,58,237,0.3); transition:.3s;">Buy Now</button>
+                </div>
             </div>
     `;
 
@@ -480,10 +471,6 @@ function renderProduct(product, container = catalogGrid) {
     // Add favorites listener
     const favBtn = card.querySelector('.fav-btn');
     favBtn.addEventListener('click', (e) => {
-        if (!currentUser) {
-            window.location.href = 'login.html';
-            return;
-        }
         let favs = JSON.parse(localStorage.getItem('favorites')) || [];
         const pid = product.id;
         if (favs.includes(pid)) {
@@ -506,6 +493,47 @@ function renderProduct(product, container = catalogGrid) {
         localStorage.setItem('favorites', JSON.stringify(favs));
         if (window.syncFavsToCloud) window.syncFavsToCloud();
     });
+
+    // Add Buy Now listener on catalog card
+    const cardBuyNowBtn = card.querySelector('.card-buynow-btn');
+    if (cardBuyNowBtn) {
+        cardBuyNowBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const stockVal = product.stock !== undefined ? parseInt(product.stock) : 999999;
+            if (stockVal <= 0) {
+                alert('This product is out of stock.');
+                return;
+            }
+
+            let sizesArray = [];
+            if (product.sizes) {
+                if (Array.isArray(product.sizes)) sizesArray = product.sizes;
+                else if (typeof product.sizes === 'string') sizesArray = product.sizes.split(',').map(s => s.trim()).filter(s => s !== '');
+            }
+
+            // Si el producto requiere talla, abrimos el modal de detalle para que la elija
+            if (sizesArray.length > 0) {
+                openProductDetail(product);
+            } else {
+                // Si no requiere talla, configuramos el producto e iniciamos compra directa
+                const item = {
+                    id: product.id,
+                    cartItemId: product.id,
+                    title: product.title,
+                    price: product.price,
+                    imageUrl: product.imageUrl,
+                    category: product.category,
+                    enabled: true,
+                    quantity: 1,
+                    size: null,
+                    stock: stockVal,
+                    shippingSize: product.shippingSize || 'small'
+                };
+                sessionStorage.setItem('buyNowItem', JSON.stringify(item));
+                window.location.href = 'Cart.html?buynow=1';
+            }
+        });
+    }
 
     if (currentUserRole === 'admin') {
         const editBtn = card.querySelector('.edit-btn');
@@ -690,13 +718,10 @@ function openProductDetail(product) {
                 <button onclick="changeQty(1)" style="background: none; border: none; color: white; font-size: 22px; cursor: pointer; line-height: 1; padding: 0 5px;">+</button>
             </div>
             <button id="detail-cart-btn" class="product-btn" style="width: 100%; padding: 15px; font-size: 16px; border-radius: 30px; border: none; cursor: pointer; transition: .3s; ${stockVal <= 0 ? 'background: #555; color: #aaa; cursor: not-allowed;' : (isInCart ? 'background: #888; color: white;' : 'background: white; color: black;')}">${stockVal <= 0 ? 'Out of Stock' : (isInCart ? '✓ In Cart — View Cart' : 'Add to Cart')}</button>
+            <button id="detail-buynow-btn" class="product-btn" style="width: 100%; padding: 15px; font-size: 16px; font-weight: 700; border-radius: 30px; border: none; cursor: pointer; transition: .3s; letter-spacing: 1px; ${stockVal <= 0 ? 'background: #333; color: #666; cursor: not-allowed;' : 'background: linear-gradient(135deg, #6a676eff, #474750ff); color: white; box-shadow: 0 4px 20px rgba(124,58,237,0.4);'}">${stockVal <= 0 ? 'Out of Stock' : ' Buy Now'}</button>
         </div>`;
 
     document.getElementById('detail-fav-btn').addEventListener('click', () => {
-        if (!currentUser) {
-            window.location.href = 'login.html';
-            return;
-        }
         let favs = JSON.parse(localStorage.getItem('favorites')) || [];
         if (favs.includes(product.id)) {
             favs = favs.filter(id => id !== product.id);
@@ -736,61 +761,73 @@ function openProductDetail(product) {
         }
     };
 
-    document.getElementById('detail-cart-btn').addEventListener('click', () => {
-        if (!currentUser) {
-            window.location.href = 'login.html';
-            return;
-        }
-
+    // ── Helper compartido: validar stock/size ─────────────────────────────
+    function getValidatedBuyItem() {
         if (stockVal <= 0) {
             alert('This item is currently out of stock.');
-            return;
+            return null;
         }
-
         let sizesArray = [];
         if (product.sizes) {
             if (Array.isArray(product.sizes)) sizesArray = product.sizes;
             else if (typeof product.sizes === 'string') sizesArray = product.sizes.split(',').map(s => s.trim()).filter(s => s !== '');
         }
-
         if (sizesArray.length > 0 && !window.selectedSize) {
             alert('Please select a size first.');
+            return null;
+        }
+        const qty = parseInt(document.getElementById('detail-qty')?.textContent) || 1;
+        if (qty > stockVal) {
+            alert(`Cannot add. Only ${stockVal} items available in stock.`);
+            return null;
+        }
+        const cartItemId = product.id + (window.selectedSize ? '-' + window.selectedSize : '');
+        return {
+            id: product.id,
+            cartItemId,
+            title: product.title + (window.selectedSize ? ` - Size: ${window.selectedSize}` : ''),
+            price: product.price,
+            imageUrl: product.imageUrl,
+            category: product.category,
+            enabled: true,
+            quantity: qty,
+            size: window.selectedSize || null,
+            stock: stockVal,
+            shippingSize: product.shippingSize || 'small'
+        };
+    }
+
+    document.getElementById('detail-cart-btn').addEventListener('click', () => {
+        if (!currentUser) {
+            alert('You must log in to use the shopping cart. You can use the "Buy Now" button to purchase directly without registering..');
+            window.location.href = 'login.html';
             return;
         }
 
+        const item = getValidatedBuyItem();
+        if (!item) return;
+
         let cart = JSON.parse(localStorage.getItem('cart')) || [];
-        const cartItemId = product.id + (window.selectedSize ? '-' + window.selectedSize : '');
-        const alreadyIn = cart.some(item => (item.cartItemId || item.id) === cartItemId);
+        const alreadyIn = cart.some(c => (c.cartItemId || c.id) === item.cartItemId);
 
         if (alreadyIn) {
             window.location.href = 'Cart.html';
         } else {
-            const qty = parseInt(document.getElementById('detail-qty')?.textContent) || 1;
-
-            if (qty > stockVal) {
-                alert(`Cannot add to cart. Only ${stockVal} items available in stock.`);
-                return;
-            }
-
-            cart.push({
-                id: product.id,
-                cartItemId: cartItemId,
-                title: product.title + (window.selectedSize ? ` - Size: ${window.selectedSize}` : ''),
-                price: product.price,
-                imageUrl: product.imageUrl,
-                category: product.category,
-                enabled: true,
-                quantity: qty,
-                size: window.selectedSize || null,
-                stock: stockVal,
-                shippingSize: product.shippingSize || 'small'
-            });
+            cart.push(item);
             localStorage.setItem('cart', JSON.stringify(cart));
             if (window.syncCartToCloud) window.syncCartToCloud();
-
             window.updateCartButtonState(product.id, window.selectedSize);
             if (window.updateCartBadge) window.updateCartBadge();
         }
+    });
+
+    document.getElementById('detail-buynow-btn').addEventListener('click', () => {
+        const item = getValidatedBuyItem();
+        if (!item) return;
+
+        // Guardar en sessionStorage y redirigir a Cart para checkout directo
+        sessionStorage.setItem('buyNowItem', JSON.stringify(item));
+        window.location.href = 'Cart.html?buynow=1';
     });
 
     const recommendationsGrid = document.getElementById('detail-recommendations');
