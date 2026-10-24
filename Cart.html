@@ -203,7 +203,6 @@
                 font-size: 28px;
             }
         }
-
     </style>
     <link rel="icon" type="image/png" href="favicon/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="favicon/favicon.svg" />
@@ -423,7 +422,7 @@
             const enabledItems = cart.filter(item => item.enabled !== false);
             const subtotal = enabledItems.reduce((sum, item) => sum + parseFloat(item.price || 0) * (item.quantity || 1), 0);
             const totalQty = enabledItems.reduce((sum, item) => sum + (item.quantity || 1), 0);
-            
+
             let shippingCost = 0;
             if (totalQty > 0) {
                 if (subtotal >= 100) {
@@ -443,14 +442,14 @@
                     shippingCost = maxCost;
                 }
             }
-            
+
             // Store globally for the checkout modal calculation
             window.cartSubtotal = subtotal;
             window.cartShippingCost = shippingCost;
             window.cartTotalQty = totalQty;
-            
+
             const total = subtotal + shippingCost;
-            
+
             itemsHTML += `
             <div class="cart-summary" style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
                 <div style="font-size:15px; color:#a3a3a3;">Subtotal: <span style="color:white; font-weight:bold; font-size:18px; margin-left:10px;">$${subtotal.toFixed(2)}</span></div>
@@ -469,7 +468,7 @@
             if (cart[idx]) {
                 const item = cart[idx];
                 const current = item.quantity || 1;
-                
+
                 if (delta > 0) {
                     try {
                         const productRef = doc(db, "products", item.id);
@@ -497,7 +496,7 @@
                         }
                     }
                 }
-                
+
                 cart[idx].quantity = Math.max(1, current + delta);
                 localStorage.setItem('cart', JSON.stringify(cart));
                 if (window.syncCartToCloud) window.syncCartToCloud();
@@ -593,7 +592,7 @@
                     const banner = document.createElement('div');
                     banner.id = 'buynow-banner';
                     banner.style.cssText = 'position:fixed;top:80px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#4f46e5);color:white;padding:12px 28px;border-radius:30px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 4px 20px rgba(124,58,237,0.5);display:flex;align-items:center;gap:10px;';
-                    banner.innerHTML = '<span>⚡ Buy Now — Ingresa tus datos de envío para pagar</span>';
+                    // banner.innerHTML = '<span> Buy Now — Ingresa tus datos de envío para pagar</span>';
                     document.body.appendChild(banner);
 
                     // Abrir modal de checkout directamente
@@ -625,7 +624,7 @@
                 let cart = JSON.parse(localStorage.getItem('cart')) || [];
                 const purchasedItems = cart.filter(item => item.enabled !== false);
                 const subtotal = purchasedItems.reduce((sum, item) => sum + parseFloat(item.price || 0) * (item.quantity || 1), 0);
-                
+
                 let shippingCost = 0;
                 if (purchasedItems.length > 0) {
                     if (subtotal >= 100) {
@@ -648,7 +647,7 @@
 
                 // Recover shipping info saved before Stripe redirect
                 let shippingInfo = {};
-                try { shippingInfo = JSON.parse(localStorage.getItem('pendingShipping')) || {}; } catch (e) {}
+                try { shippingInfo = JSON.parse(localStorage.getItem('pendingShipping')) || {}; } catch (e) { }
 
                 const taxAmount = parseFloat(shippingInfo.taxAmount || 0);
                 const total = subtotal + shippingCost + taxAmount;
@@ -812,13 +811,13 @@
         };
 
         window.proceedToStripe = async function () {
-            const name    = document.getElementById('shipping-name').value.trim();
-            const email   = document.getElementById('shipping-email').value.trim();
-            const street  = document.getElementById('shipping-street').value.trim();
-            const line2   = document.getElementById('shipping-line2').value.trim();
-            const city    = document.getElementById('shipping-city').value.trim();
-            const state   = document.getElementById('shipping-state').value;
-            const zip     = document.getElementById('shipping-zip').value.trim();
+            const name = document.getElementById('shipping-name').value.trim();
+            const email = document.getElementById('shipping-email').value.trim();
+            const street = document.getElementById('shipping-street').value.trim();
+            const line2 = document.getElementById('shipping-line2').value.trim();
+            const city = document.getElementById('shipping-city').value.trim();
+            const state = document.getElementById('shipping-state').value;
+            const zip = document.getElementById('shipping-zip').value.trim();
 
             if (!name || !email || !street || !city || !state || !zip) {
                 alert('Please fill in all shipping fields.');
@@ -839,16 +838,16 @@
             const taxAmount = taxableAmount * taxRateInfo.rate;
 
             // Save shipping info to localStorage before leaving the page
-            localStorage.setItem('pendingShipping', JSON.stringify({ 
-                name, 
-                email, 
+            localStorage.setItem('pendingShipping', JSON.stringify({
+                name,
+                email,
                 address,
                 street,
                 line2,
                 city,
                 state,
                 zip,
-                taxAmount 
+                taxAmount
             }));
 
             document.getElementById('shipping-modal').style.display = 'none';
@@ -878,7 +877,7 @@
                         const stock = productData.stock !== undefined ? parseInt(productData.stock) : 999999;
                         if (item.quantity > stock) {
                             alert(`⚠️ Stock limit exceeded for "${item.title}".\nOnly ${stock} items are available in stock, but you have ${item.quantity} in your cart.\n\nWe have adjusted the quantity in your cart to match the available stock. Please review your cart.`);
-                            
+
                             // Adjust quantity in cart and save
                             let fullCart = JSON.parse(localStorage.getItem('cart')) || [];
                             const matchIdx = fullCart.findIndex(cItem => cItem.cartItemId === item.cartItemId);
@@ -891,10 +890,10 @@
                                 localStorage.setItem('cart', JSON.stringify(fullCart));
                                 if (window.syncCartToCloud) window.syncCartToCloud();
                             }
-                            
+
                             window.renderCart();
                             if (window.updateCartBadge) window.updateCartBadge();
-                            
+
                             btn.disabled = false;
                             btn.textContent = 'Proceed to Payment';
                             return;
@@ -909,7 +908,7 @@
                 const response = await fetch('/api/create-checkout-session', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         items: enabledItems,
                         shippingState: state
                     })
@@ -930,11 +929,15 @@
     </script>
 
     <!-- Shipping Info Modal -->
-    <div id="shipping-modal" onclick="if(event.target === this) window.closeCheckout()" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:5000; justify-content:center; align-items:center; backdrop-filter:blur(8px);">
-        <div style="background:#0d0d0d; border:1px solid rgba(255,255,255,0.08); border-radius:18px; padding:40px; width:100%; max-width:480px; position:relative;">
-            <button onclick="window.closeCheckout()" style="position:absolute;top:15px;right:20px;background:none;border:none;color:white;font-size:24px;cursor:pointer;">×</button>
+    <div id="shipping-modal" onclick="if(event.target === this) window.closeCheckout()"
+        style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:5000; justify-content:center; align-items:center; backdrop-filter:blur(8px);">
+        <div
+            style="background:#0d0d0d; border:1px solid rgba(255,255,255,0.08); border-radius:18px; padding:40px; width:100%; max-width:480px; position:relative;">
+            <button onclick="window.closeCheckout()"
+                style="position:absolute;top:15px;right:20px;background:none;border:none;color:white;font-size:24px;cursor:pointer;">×</button>
             <h2 style="margin-bottom:8px; font-size:22px;">Shipping Information</h2>
-            <p style="color:#8f8f8f; font-size:13px; margin-bottom:25px;">Enter your details before proceeding to payment.</p>
+            <p style="color:#8f8f8f; font-size:13px; margin-bottom:25px;">Enter your details before proceeding to
+                payment.</p>
 
             <div style="margin-bottom:15px;">
                 <label style="display:block;margin-bottom:6px;color:#8f8f8f;font-size:13px;">Full Name</label>
@@ -1025,7 +1028,8 @@
             </div>
 
             <!-- Live Order Summary & Tax Breakdown -->
-            <div id="checkout-breakdown" style="margin-bottom:20px; padding:15px; background:#161616; border:1px solid rgba(255,255,255,0.04); border-radius:12px; font-size:14px; display:none; flex-direction:column; gap:8px;">
+            <div id="checkout-breakdown"
+                style="margin-bottom:20px; padding:15px; background:#161616; border:1px solid rgba(255,255,255,0.04); border-radius:12px; font-size:14px; display:none; flex-direction:column; gap:8px;">
                 <div style="display:flex; justify-content:space-between; color:#a3a3a3;">
                     <span>Subtotal:</span>
                     <span id="checkout-subtotal" style="color:white; font-weight:600;">$0.00</span>
@@ -1038,7 +1042,8 @@
                     <span id="checkout-tax-label">Sales Tax (0%):</span>
                     <span id="checkout-tax" style="color:white; font-weight:600;">$0.00</span>
                 </div>
-                <div style="border-top:1px solid #333; margin-top:5px; padding-top:10px; display:flex; justify-content:space-between; font-weight:bold; font-size:16px;">
+                <div
+                    style="border-top:1px solid #333; margin-top:5px; padding-top:10px; display:flex; justify-content:space-between; font-weight:bold; font-size:16px;">
                     <span>Total:</span>
                     <span id="checkout-total" style="color:white;">$0.00</span>
                 </div>
