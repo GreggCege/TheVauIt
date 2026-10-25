@@ -715,7 +715,9 @@ function openProductDetail(product) {
                 <span id="detail-qty" style="font-size: 18px; font-weight: bold; min-width: 24px; text-align: center;">${currentQty}</span>
                 <button onclick="changeQty(1)" style="background: none; border: none; color: white; font-size: 22px; cursor: pointer; line-height: 1; padding: 0 5px;">+</button>
             </div>
+            ${currentUser ? `
             <button id="detail-cart-btn" class="product-btn" style="width: 100%; padding: 15px; font-size: 16px; border-radius: 30px; border: none; cursor: pointer; transition: .3s; ${stockVal <= 0 ? 'background: #555; color: #aaa; cursor: not-allowed;' : (isInCart ? 'background: #888; color: white;' : 'background: white; color: black;')}">${stockVal <= 0 ? 'Out of Stock' : (isInCart ? '✓ In Cart — View Cart' : 'Add to Cart')}</button>
+            ` : ''}
             <button id="detail-buynow-btn" class="product-btn" style="width: 100%; padding: 15px; font-size: 16px; font-weight: 700; border-radius: 30px; border: none; cursor: pointer; transition: .3s; letter-spacing: 1px; ${stockVal <= 0 ? 'background: #333; color: #666; cursor: not-allowed;' : 'background: linear-gradient(135deg, #6a676eff, #474750ff); color: white; box-shadow: 0 4px 20px rgba(124,58,237,0.4);'}">${stockVal <= 0 ? 'Out of Stock' : ' Buy Now'}</button>
         </div>`;
 
@@ -795,12 +797,14 @@ function openProductDetail(product) {
         };
     }
 
-    document.getElementById('detail-cart-btn').addEventListener('click', () => {
-        if (!currentUser) {
-            alert('You must log in to use the shopping cart. You can use the "Buy Now" button to purchase directly without registering..');
-            window.location.href = 'login.html';
-            return;
-        }
+    const detailCartBtn = document.getElementById('detail-cart-btn');
+    if (detailCartBtn) {
+        detailCartBtn.addEventListener('click', () => {
+            if (!currentUser) {
+                alert('You must log in to use the shopping cart. You can use the "Buy Now" button to purchase directly without registering..');
+                window.location.href = 'login.html';
+                return;
+            }
 
         const item = getValidatedBuyItem();
         if (!item) return;
@@ -818,6 +822,7 @@ function openProductDetail(product) {
             if (window.updateCartBadge) window.updateCartBadge();
         }
     });
+}
 
     document.getElementById('detail-buynow-btn').addEventListener('click', () => {
         const item = getValidatedBuyItem();
