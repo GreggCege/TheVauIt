@@ -203,9 +203,7 @@ function updateHeader(username) {
         `;
         document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
     } else {
-        authSection.innerHTML = `
-            <a href="login.html" style="color:white;text-decoration:none;font-weight:bold;font-size:14px;">Log In</a>
-        `;
+        authSection.innerHTML = '';
     }
 
     // Mostrar/ocultar elementos de admin
